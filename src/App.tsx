@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AdminDashboard } from './components/AdminDashboard';
 import { ClueNotebookModal } from './components/ClueNotebookModal';
 import { HudOverlay } from './components/HudOverlay';
 import { LabViewport } from './components/LabViewport';
@@ -7,9 +8,10 @@ import { ScoreboardModal } from './components/ScoreboardModal';
 import { TutorialModal } from './components/TutorialModal';
 import { TerminalInspectModal } from './components/TerminalInspectModal';
 import { VictoryModal } from './components/VictoryModal';
-import { computeUnlockedDoors, DOORS, TERMINALS, ZONES } from './data/labLayout';
+import { computeUnlockedDoors, DOORS, getZoneAtPosition, TERMINALS, ZONES } from './data/labLayout';
 import { CLUES, PUZZLES } from './data/puzzles';
 import {
+  AdminAiChatEntry,
   AiChatMessage,
   ClueData,
   PlayerProgressState,
@@ -78,6 +80,14 @@ export default function App() {
   const [showCluesModal, setShowCluesModal] = useState<boolean>(false);
   const [showScoreboard, setShowScoreboard] = useState<boolean>(false);
   const [showVictory, setShowVictory] = useState<boolean>(false);
+  const [showAdminPage, setShowAdminPage] = useState<boolean>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('admin') === '1' || window.location.hash === '#admin';
+    } catch {
+      return false;
+    }
+  });
   const [hudCollapsed, setHudCollapsed] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(false);
   const [cameraResetSignal, setCameraResetSignal] = useState<number>(0);
@@ -125,6 +135,11 @@ export default function App() {
     }
   }, []);
 
+  const playerRef = useRef<PlayerProgressState | null>(player);
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
   const syncPlayerToServer = useCallback(async (p: PlayerProgressState) => {
     try {
       const unlockedDoors = computeUnlockedDoors(p.solvedPuzzleIds, p.syncedUnlockedZones);
@@ -135,6 +150,26 @@ export default function App() {
         unlockedZones.push('zone4');
       }
       if (unlockedDoors['door-4-5']) unlockedZones.push('zone5');
+
+      const aiChatLogs: AdminAiChatEntry[] = Object.entries(p.aiChatByPuzzle || {})
+        .flatMap(([puzzleId, msgs]) =>
+          (msgs || []).map((m) => ({
+            puzzleId,
+            role: m.role,
+            text: m.text,
+            ...(m.source ? { source: m.source } : {}),
+            createdAt: m.createdAt,
+          }))
+        )
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .slice(-40);
+
+      const aiChatCount = Object.values(p.aiChatByPuzzle || {}).reduce(
+        (sum, list) => sum + (list || []).filter((m) => m.role === 'user').length,
+        0
+      );
+
+      const currentZoneId = getZoneAtPosition(p.playerPosition.x, p.playerPosition.z).id;
 
       const res = await fetch('/api/players/sync', {
         method: 'POST',
@@ -147,6 +182,19 @@ export default function App() {
           solvedCount: p.solvedPuzzleIds.length,
           finalRestored: p.finalRestored,
           unlockedZones,
+          solvedPuzzleIds: p.solvedPuzzleIds,
+          puzzleScores: p.puzzleScores,
+          attemptsByPuzzle: p.attemptsByPuzzle,
+          hintsUsedByPuzzle: p.hintsUsedByPuzzle,
+          discoveredClueIds: p.discoveredClueIds,
+          remainingSeconds: p.remainingSeconds,
+          currentZoneId,
+          playerPosition: {
+            x: p.playerPosition.x,
+            z: p.playerPosition.z,
+          },
+          aiChatCount,
+          aiChatLogs,
         }),
       });
       if (res.ok) {
@@ -164,11 +212,47 @@ export default function App() {
     return () => window.clearInterval(interval);
   }, [fetchScoreboard]);
 
+  const totalAttemptsCount = useMemo(() => {
+    if (!player) return 0;
+    return Object.values(player.attemptsByPuzzle).reduce((s, n) => s + (Number(n) || 0), 0);
+  }, [player?.attemptsByPuzzle]);
+
+  const totalAiMessageCount = useMemo(() => {
+    if (!player?.aiChatByPuzzle) return 0;
+    return Object.values(player.aiChatByPuzzle).reduce((s, list) => s + (list?.length || 0), 0);
+  }, [player?.aiChatByPuzzle]);
+
+  const totalHintsUsed = useMemo(() => {
+    if (!player) return 0;
+    return Object.values(player.hintsUsedByPuzzle).reduce((acc, n) => acc + (Number(n) || 0), 0);
+  }, [player?.hintsUsedByPuzzle]);
+
   useEffect(() => {
     if (player) {
       syncPlayerToServer(player);
     }
-  }, [player?.playerId, player?.totalScore, player?.solvedPuzzleIds.length, player?.finalRestored, syncPlayerToServer]);
+  }, [
+    player?.playerId,
+    player?.totalScore,
+    player?.solvedPuzzleIds.length,
+    player?.finalRestored,
+    totalAttemptsCount,
+    totalHintsUsed,
+    totalAiMessageCount,
+    currentZone.id,
+    syncPlayerToServer,
+  ]);
+
+  // Lightweight heartbeat sync every 25s while active so Admin dashboard online status & coordinates stay current
+  useEffect(() => {
+    if (!player?.playerId || showOnboarding) return;
+    const heartbeat = window.setInterval(() => {
+      if (playerRef.current) {
+        syncPlayerToServer(playerRef.current);
+      }
+    }, 25000);
+    return () => window.clearInterval(heartbeat);
+  }, [player?.playerId, showOnboarding, syncPlayerToServer]);
 
   // Countdown timer (ticks when playing)
   useEffect(() => {
@@ -191,12 +275,14 @@ export default function App() {
         !inspectedTerminalId &&
         !showOnboarding &&
         !showScoreboard &&
-        !showCluesModal
+        !showCluesModal &&
+        !showAdminPage
       ) {
         setHudCollapsed((v) => !v);
       }
       if (e.code === 'Escape') {
-        if (inspectedTerminalId) setInspectedTerminalId(null);
+        if (showAdminPage) setShowAdminPage(false);
+        else if (inspectedTerminalId) setInspectedTerminalId(null);
         else if (activePuzzleId) setActivePuzzleId(null);
         else if (showVictory) setShowVictory(false);
         else if (showCluesModal) setShowCluesModal(false);
@@ -206,7 +292,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activePuzzleId, inspectedTerminalId, showOnboarding, showVictory, showScoreboard, showCluesModal, showTutorialHelp]);
+  }, [activePuzzleId, inspectedTerminalId, showOnboarding, showVictory, showScoreboard, showCluesModal, showTutorialHelp, showAdminPage]);
 
   const unlockedDoors = useMemo(() => {
     if (!player) return computeUnlockedDoors([]);
@@ -534,17 +620,13 @@ export default function App() {
     Boolean(inspectedTerminalId) ||
     showCluesModal ||
     showScoreboard ||
-    showVictory;
+    showVictory ||
+    showAdminPage;
 
   const hasTeamProgress: Record<TeamId, boolean> = {
     alpha: (scoreboard.teamUnlockedZones.alpha?.length ?? 0) > 1,
     beta: (scoreboard.teamUnlockedZones.beta?.length ?? 0) > 1,
   };
-
-  const totalHintsUsed = useMemo(() => {
-    if (!player) return 0;
-    return Object.values(player.hintsUsedByPuzzle).reduce((acc, n) => acc + (Number(n) || 0), 0);
-  }, [player]);
 
   const effectiveScoreboard: ScoreboardResponse = useMemo(() => {
     if (!player) return scoreboard;
@@ -614,6 +696,7 @@ export default function App() {
           }}
           onOpenTutorial={() => setShowTutorialHelp(true)}
           onOpenVictory={() => setShowVictory(true)}
+          onOpenAdmin={() => setShowAdminPage(true)}
         />
       )}
 
@@ -625,7 +708,7 @@ export default function App() {
       )}
 
       {/* Onboarding & Controls Tutorial */}
-      {(showOnboarding || showTutorialHelp) && (
+      {(showOnboarding || showTutorialHelp) && !showAdminPage && (
         <TutorialModal
           isFirstLaunch={showOnboarding}
           initialName={player?.playerName || ''}
@@ -636,6 +719,7 @@ export default function App() {
           onClose={() => setShowTutorialHelp(false)}
           onRestartGame={handleRestartGame}
           onNewProfile={handleOpenNewProfile}
+          onOpenAdmin={() => setShowAdminPage(true)}
         />
       )}
 
@@ -707,6 +791,14 @@ export default function App() {
             setShowScoreboard(true);
           }}
           onRestartGame={handleRestartGame}
+        />
+      )}
+
+      {/* Admin Monitoring Dashboard */}
+      {showAdminPage && (
+        <AdminDashboard
+          onBackToGame={() => setShowAdminPage(false)}
+          onRefreshPublicScoreboard={fetchScoreboard}
         />
       )}
     </div>

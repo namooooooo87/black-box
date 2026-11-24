@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Keyboard, Mouse, RotateCcw, ShieldCheck, Sparkles, UserPlus, X } from 'lucide-react';
+import { Keyboard, Mouse, RotateCcw, Shield, ShieldCheck, Sparkles, UserPlus, X } from 'lucide-react';
 import { TeamId } from '../types/game';
 
 interface TutorialModalProps {
@@ -12,6 +12,7 @@ interface TutorialModalProps {
   onClose?: () => void;
   onRestartGame?: () => void;
   onNewProfile?: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export const TutorialModal: React.FC<TutorialModalProps> = ({
@@ -24,6 +25,7 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
   onClose,
   onRestartGame,
   onNewProfile,
+  onOpenAdmin,
 }) => {
   const [name, setName] = useState(initialName || '탐험가');
   const [team, setTeam] = useState<TeamId>(initialTeam);
@@ -230,10 +232,20 @@ export const TutorialModal: React.FC<TutorialModalProps> = ({
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>{explorationOnly ? 'WASD / 방향키 · 마우스 드래그' : '진행 상황은 자동 저장됩니다 (1인 탐험도 모든 구역 가능)'}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{explorationOnly ? 'WASD / 방향키 · 마우스 드래그' : '진행 상황은 자동 저장됩니다'}</span>
+              {onOpenAdmin && (
+                <button
+                  type="button"
+                  onClick={onOpenAdmin}
+                  className="ml-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[11px] font-semibold text-slate-300 hover:text-sky-300 flex items-center gap-1 transition-colors"
+                >
+                  <Shield className="w-3 h-3" />
+                  관리자 페이지
+                </button>
+              )}
             </div>
             {isFirstLaunch ? (
               <button

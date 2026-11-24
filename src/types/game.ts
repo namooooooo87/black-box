@@ -161,3 +161,56 @@ export interface ScoreboardResponse {
   members: TeamScoreboardMember[];
   teamUnlockedZones: Record<TeamId, ZoneId[]>;
 }
+
+export interface AdminAiChatEntry {
+  puzzleId: string;
+  role: 'user' | 'assistant';
+  text: string;
+  source?: 'ai' | 'fallback';
+  createdAt: number;
+}
+
+export interface AdminPlayerRecord extends TeamScoreboardMember {
+  unlockedZones: string[];
+  solvedPuzzleIds: string[];
+  puzzleScores: Record<string, number>;
+  attemptsByPuzzle: Record<string, number>;
+  hintsUsedByPuzzle: Record<string, number>;
+  discoveredClueIds: string[];
+  remainingSeconds: number;
+  currentZoneId: string;
+  playerPosition: { x: number; z: number };
+  aiChatCount: number;
+  aiChatLogs: AdminAiChatEntry[];
+  firstConnectedAt: number;
+  isOnline: boolean;
+}
+
+export interface AdminActivityEvent {
+  id: string;
+  timestamp: number;
+  playerId: string;
+  playerName: string;
+  teamId: TeamId;
+  action: 'join' | 'progress' | 'restore' | 'reset';
+  detail: string;
+}
+
+export interface AdminOverviewResponse {
+  generatedAt: number;
+  summary: {
+    totalPlayers: number;
+    onlinePlayers: number;
+    alphaPlayers: number;
+    betaPlayers: number;
+    alphaTotalScore: number;
+    betaTotalScore: number;
+    finalRestoredCount: number;
+    avgProgressPercent: number;
+    totalHintsUsed: number;
+    totalAiQuestions: number;
+  };
+  players: AdminPlayerRecord[];
+  activityLog: AdminActivityEvent[];
+}
+

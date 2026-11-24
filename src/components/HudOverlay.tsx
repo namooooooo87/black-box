@@ -7,6 +7,7 @@ import {
   Compass,
   HelpCircle,
   RotateCcw,
+  Shield,
   Trophy,
   Volume2,
   VolumeX,
@@ -35,6 +36,7 @@ interface HudOverlayProps {
   onOpenScoreboard: () => void;
   onOpenTutorial: () => void;
   onOpenVictory?: () => void;
+  onOpenAdmin?: () => void;
 }
 
 function formatTimer(seconds: number): string {
@@ -65,6 +67,7 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
   onOpenScoreboard,
   onOpenTutorial,
   onOpenVictory,
+  onOpenAdmin,
 }) => {
   const totalPuzzles = PUZZLES.length;
   const progressPercent = totalPuzzles > 0 ? Math.round((solvedCount / totalPuzzles) * 100) : 0;
@@ -187,6 +190,16 @@ export const HudOverlay: React.FC<HudOverlayProps> = ({
             <HelpCircle className="w-3.5 h-3.5" />
             <span>조작 방법</span>
           </button>
+          {onOpenAdmin && (
+            <button
+              onClick={onOpenAdmin}
+              title="관리자 페이지 (서버 접속자 모니터링)"
+              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-300 hover:text-sky-300 flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">관리자</span>
+            </button>
+          )}
           <button
             onClick={onToggleMute}
             aria-label={muted ? '소리 켜기' : '소리 끄기'}
